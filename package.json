@@ -1,0 +1,27 @@
+{
+  "name": "actual-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local agent that interacts with an Actual Budget server via @actual-app/api",
+  "scripts": {
+    "list-budgets": "node scripts/list-budgets.js",
+    "list-accounts": "node scripts/list-accounts.js",
+    "connect": "node scripts/connect.js",
+    "sync": "node scripts/sync.js",
+    "status": "node scripts/budget-status.js",
+    "net-worth": "node scripts/net-worth.js",
+    "insights": "node scripts/insights.js",
+    "categorize": "node scripts/categorize-pending.js",
+    "search": "node scripts/search-transactions.js",
+    "report": "node scripts/monthly-report.js",
+    "anomalies": "node scripts/find-anomalies.js",
+    "add-tx": "node scripts/add-transaction.js",
+    "import-csv": "node scripts/import-csv.js",
+    "set-budget": "node scripts/budget-set.js"
+  },
+  "dependencies": {
+    "@actual-app/api": "^26.4.0",
+    "dotenv": "^17.0.0"
+  }
+}

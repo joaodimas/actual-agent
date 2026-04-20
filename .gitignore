@@ -1,0 +1,29 @@
+# Secrets — never commit
+.env
+.env.local
+.env.*.local
+
+# Actual Budget locally cached files (downloaded budget data)
+.actual-data/
+*.actual-cache
+
+# Script output — may contain personal financial data
+out/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Output
+tmp/
+*.log
