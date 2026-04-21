@@ -120,6 +120,11 @@ export async function withBudget(fn, opts = {}) {
   try {
     return await fn(api);
   } finally {
+    try {
+      await withSilencedStdout(() => api.sync());
+    } catch (err) {
+      console.error('[warn] sync-back failed:', err.message);
+    }
     await shutdown();
   }
 }
