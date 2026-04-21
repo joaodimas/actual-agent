@@ -12,9 +12,10 @@
 import 'dotenv/config';
 
 const args      = process.argv.slice(2);
-const acctFilter = args[args.indexOf('--account') + 1] || null;
-const fromArg   = args[args.indexOf('--from') + 1] || null;
-const toArg     = args[args.indexOf('--to') + 1]   || null;
+const getArg = (flag) => { const i = args.indexOf(flag); return i !== -1 ? args[i + 1] || null : null; };
+const acctFilter = getArg('--account');
+const fromArg    = getArg('--from');
+const toArg      = getArg('--to');
 const compare   = args.includes('--compare');
 
 const ACCESS_URL = process.env.SIMPLEFIN_ACCESS_URL;
@@ -29,11 +30,19 @@ const toDate   = toArg   ? new Date(toArg)   : new Date();
 const startTs = Math.floor(fromDate.getTime() / 1000);
 const endTs   = Math.floor(toDate.getTime()   / 1000);
 
-const url = new URL(`${ACCESS_URL}/accounts`);
-url.searchParams.set('start-date', startTs);
-url.searchParams.set('end-date',   endTs);
+// Extract credentials from URL (fetch rejects URLs with embedded auth)
+const parsedAccess = new URL(ACCESS_URL);
+const basicAuth = Buffer.from(`${parsedAccess.username}:${parsedAccess.password}`).toString('base64');
+parsedAccess.username = '';
+parsedAccess.password = '';
+const base = parsedAccess.toString().replace(/\/?$/, '/');
+const accountsUrl = new URL(`${base}accounts`);
+accountsUrl.searchParams.set('start-date', startTs);
+accountsUrl.searchParams.set('end-date', endTs);
 
-const res = await fetch(url.toString());
+const res = await fetch(accountsUrl.toString(), {
+  headers: { Authorization: `Basic ${basicAuth}` },
+});
 if (!res.ok) {
   console.error(`SimpleFIN request failed: ${res.status} ${await res.text()}`);
   process.exit(1);
