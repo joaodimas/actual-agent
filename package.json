@@ -18,7 +18,8 @@
     "anomalies": "node scripts/find-anomalies.js",
     "add-tx": "node scripts/add-transaction.js",
     "import-csv": "node scripts/import-csv.js",
-    "set-budget": "node scripts/budget-set.js"
+    "set-budget": "node scripts/budget-set.js",
+    "consistency-check": "node scripts/consistency-check.js"
   },
   "dependencies": {
     "@actual-app/api": "^26.4.0",

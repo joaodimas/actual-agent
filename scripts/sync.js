@@ -5,7 +5,7 @@
 //   node scripts/sync.js --bank       # also pull new transactions from connected banks
 //   node scripts/sync.js --bank ACCT  # bank-sync only the given account id (or substring of name)
 
-import { withBudget, fmtAmount } from './lib/actual.js';
+import { withBudget, fmtAmount, withSilencedStdout } from './lib/actual.js';
 
 const args = process.argv.slice(2);
 const runBank = args.includes('--bank');
@@ -33,7 +33,7 @@ await withBudget(async (api) => {
     console.log(`Running bank sync on ${targets.length} account(s)...`);
     for (const a of targets) {
       try {
-        await api.runBankSync({ accountId: a.id });
+        await withSilencedStdout(() => api.runBankSync({ accountId: a.id }));
         const bal = await api.getAccountBalance(a.id);
         console.log(`  ✓ ${a.name.padEnd(30)} balance ${fmtAmount(bal)}`);
       } catch (err) {

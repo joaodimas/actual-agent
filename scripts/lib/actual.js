@@ -82,23 +82,24 @@ export async function findBudgetSyncId(name) {
   );
 }
 
-export async function connect({ budgetName, sync = true } = {}) {
+export async function connect({ budgetName, sync = true, forceDownload = false } = {}) {
   await init();
   if (!downloaded) {
     const name = budgetName || requireEnv('ACTUAL_BUDGET_NAME');
     const syncId = await findBudgetSyncId(name);
-    const opts = process.env.ACTUAL_E2E_PASSWORD
-      ? { password: process.env.ACTUAL_E2E_PASSWORD }
-      : undefined;
-    await withSilencedStdout(() => api.downloadBudget(syncId, opts));
-    downloaded = true;
-  }
-  if (sync) {
-    try {
-      await withSilencedStdout(() => api.sync());
-    } catch (err) {
-      console.error('[warn] api.sync() failed:', err.message);
+    const localBudgetPath = path.join(DATA_DIR, syncId);
+    const hasLocal = !forceDownload && fs.existsSync(localBudgetPath);
+    if (hasLocal) {
+      // Open local copy without downloading — preserves uncommitted local changes.
+      // Falls back to downloadBudget on the first run (no local file yet).
+      await withSilencedStdout(() => api.loadBudget(syncId));
+    } else {
+      const opts = process.env.ACTUAL_E2E_PASSWORD
+        ? { password: process.env.ACTUAL_E2E_PASSWORD }
+        : undefined;
+      await withSilencedStdout(() => api.downloadBudget(syncId, opts));
     }
+    downloaded = true;
   }
   return api;
 }
@@ -200,4 +201,4 @@ export function tablePrint(rows, columns) {
   }
 }
 
-export { api };
+export { api, withSilencedStdout };
