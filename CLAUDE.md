@@ -8,7 +8,7 @@ This project gives Claude programmatic access to a personal **Actual Budget** se
 - `scripts/*.js` — one script per capability. Each script is also exposed as an npm script.
 - `.claude/skills/<name>/SKILL.md` — project-local skills. **Use these first** — they describe when to invoke each script and how to interpret output.
 - `.actual-data/` — local cache of the downloaded budget file (gitignored).
-- `.env` — server URL, password, budget name (gitignored).
+- `.env` — server URL, password, budget name, SimpleFIN access URL. **Versioned in git — always commit `.env` when it changes.**
 - `.npmrc` — pins to public npm registry to bypass user-level Uber-internal config.
 - `docs/using-the-api.md`, `docs/api-reference.md` — official @actual-app/api docs (cleaned up markdown).
 
@@ -52,6 +52,7 @@ Read-only skills (status, insights, report, net-worth, search, anomalies, list-a
 ## Don't
 
 - Don't create new wrapper scripts for one-off questions — extend `withBudget()` calls inline if needed, or grep the helpers in `scripts/lib/actual.js`.
-- Don't commit `.env`, `.actual-data/`, or any budget data — it's gitignored.
+- Don't commit `.actual-data/` or any budget data — it's gitignored. `.env` IS versioned, so always `git add .env` when it changes.
+
 - Don't share account balances, transaction details, or other personal data outside this conversation.
 - Don't push transactions to the server without the user's explicit go-ahead — most "this looks like a fix" feedback should be a question, not a `--apply`.
