@@ -60,6 +60,12 @@ await withBudget(async (api) => {
     return;
   }
 
+  // Load payees/categories early — needed for balance investigation output
+  const payees = await api.getPayees();
+  const payeeById = new Map(payees.map((p) => [p.id, p]));
+  const cats = await api.getCategories();
+  const catById = new Map(cats.map((c) => [c.id, c]));
+
   // ── 1. ACCOUNT BALANCES ─────────────────────────────────────────────────
   section(1, `ACCOUNT BALANCES${runBank ? ' (after SimpleFIN sync)' : ' (local — run with --bank to compare vs SimpleFIN)'}`);
 
@@ -79,6 +85,13 @@ await withBudget(async (api) => {
     // Pass today as cutoff so same-day adjustments are included
     const actualBalance = await api.getAccountBalance(a.id, today);
 
+    // Compute cleared-only balance — SimpleFIN reports posted (cleared) balance only
+    const acctTxns = await api.getTransactions(a.id, '2000-01-01', today);
+    const unclearedSum = acctTxns
+      .filter((t) => !t.cleared && !t.is_parent)
+      .reduce((s, t) => s + t.amount, 0);
+    const clearedBalance = actualBalance - unclearedSum;
+
     if (!runBank) {
       console.log(`  –  ${a.name.padEnd(30)} ${fmtAmount(actualBalance)}`);
       continue;
@@ -95,21 +108,53 @@ await withBudget(async (api) => {
     if (bankBalance == null) {
       console.log(`  –  ${a.name.padEnd(30)} ${fmtAmount(actualBalance)}  (bank did not report a balance)`);
     } else {
-      const diff = actualBalance - bankBalance;
+      const diff = clearedBalance - bankBalance;
+      const totalDiff = actualBalance - bankBalance;
+      const pendingNote = unclearedSum !== 0 ? `  (${fmtAmount(unclearedSum)} pending)` : '';
       if (Math.abs(diff) <= 1) {
-        ok(`${a.name.padEnd(30)} ${fmtAmount(actualBalance)} matches bank`);
+        ok(`${a.name.padEnd(30)} ${fmtAmount(clearedBalance)} matches bank${pendingNote}`);
+      } else if (Math.abs(totalDiff) <= 1) {
+        // SimpleFIN reports available balance (includes pending) for this account
+        ok(`${a.name.padEnd(30)} ${fmtAmount(actualBalance)} matches bank (incl. pending)${pendingNote}`);
       } else {
-        bad(`${a.name.padEnd(30)} Actual ${fmtAmount(actualBalance)} vs bank ${fmtAmount(bankBalance)} → diff ${fmtAmount(diff)}`);
+        bad(`${a.name.padEnd(30)} cleared ${fmtAmount(clearedBalance)} vs bank ${fmtAmount(bankBalance)} → diff ${fmtAmount(diff)}${pendingNote}`);
+
+        // ── Auto-investigation ───────────────────────────────────────────
+        if (Math.abs(totalDiff) < Math.abs(diff)) {
+          console.log(`     ↳ Total balance (incl. pending) is closer: ${fmtAmount(actualBalance)} vs bank ${fmtAmount(bankBalance)} (residual ${fmtAmount(totalDiff)})`);
+        }
+
+
+        // 2. Does any single pending transaction explain the diff?
+        const uncleared = acctTxns.filter((t) => !t.cleared && !t.is_parent);
+        const matchingPending = uncleared.find((t) => Math.abs(t.amount - diff) <= 1);
+        if (matchingPending) {
+          const pPayee = matchingPending.payee ? (payeeById.get(matchingPending.payee)?.name ?? '') : (matchingPending.notes ?? '');
+          console.log(`     ↳ Pending transaction matches diff exactly: ${matchingPending.date} ${pPayee} ${fmtAmount(matchingPending.amount)} — likely already posted at bank.`);
+        }
+
+        // 3. Show all pending transactions for this account
+        if (uncleared.length) {
+          console.log(`     ↳ Pending transactions:`);
+          for (const t of uncleared) {
+            const pPayee = t.payee ? (payeeById.get(t.payee)?.name ?? '') : (t.notes ?? '—');
+            console.log(`        ${t.date}  ${pPayee.padEnd(35)}  ${fmtAmount(t.amount)}`);
+          }
+        }
+
+        // 4. Check for manual (non-imported) opening balance
+        const manualTxns = acctTxns.filter((t) => !t.imported_id && !t.is_parent && !t.transfer_id);
+        if (manualTxns.length) {
+          console.log(`     ↳ Manual (non-imported) transactions — opening balance may be off:`);
+          for (const t of manualTxns) {
+            console.log(`        ${t.date}  ${fmtAmount(t.amount)}  (manual)`);
+          }
+        }
       }
     }
   }
 
   // ── Load transactions for all remaining checks ───────────────────────────
-  const payees = await api.getPayees();
-  const payeeById = new Map(payees.map((p) => [p.id, p]));
-  const cats = await api.getCategories();
-  const catById = new Map(cats.map((c) => [c.id, c]));
-
   const allTxs = [];
   for (const a of accounts) {
     const txs = await api.getTransactions(a.id, sinceDate, today);

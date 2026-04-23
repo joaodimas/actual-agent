@@ -45,9 +45,23 @@ npm run consistency-check -- --bank
 
 Each section prints `✓` (clean), `⚠` (warning), or `✗` (definitive issue), followed by a summary with a total issue count.
 
-## Notes
+## Balance mismatch investigation (agent instructions)
 
-- Balance comparison only works with `--bank` — without it, there's nothing to compare against.
-- Accounts without a SimpleFIN/GoCardless connection will show "no bank connection" and are skipped for the balance check.
-- `imported_id` duplicates are definitive (same bank transaction imported twice). Date+amount+payee duplicates are probable — some recurring charges on the same day are legitimate.
-- The 30-day uncleared threshold catches forgotten manual entries and outstanding checks; adjust `--since` if your budget is newer.
+The script auto-investigates cleared vs bank discrepancies and prints hints. After running, read every `✗` line and its `↳` hints carefully. Do not stop until every issue is either explained as self-resolving or has a concrete fix applied.
+
+**Triage logic:**
+
+1. **"Total balance (incl. pending) matches bank — will self-resolve"** → no action needed; the uncleared transaction is already posted at the bank and will be cleared on the next sync.
+
+2. **"Pending transaction matches diff exactly"** → same as above; self-resolving.
+
+3. **Residual diff after accounting for pending + manual opening balance shown** → likely an incorrect opening balance. Fix: adjust the manual transaction by the exact diff amount. Confirm with the user before applying.
+
+4. **No manual transaction shown but diff persists** → investigate via verbose sync (`ACTUAL_VERBOSE=1 node scripts/sync.js --bank "Account Name" 2>&1`) and look at `added`/`updated` vs `ignored` entries and the `startingBalance` field. Compare SimpleFIN transaction amounts vs what Actual has stored for those import IDs.
+
+5. **After fixing opening balances**, re-run `--bank` to confirm all accounts pass.
+
+## Balance comparison logic
+
+The script compares **cleared-only** Actual balance vs the bank balance (SimpleFIN reports posted/cleared transactions only). Uncleared (pending) transactions in Actual are excluded from the comparison and shown as informational notes. A mismatch on cleared balance with no pending explanation = a real problem requiring investigation.
+
