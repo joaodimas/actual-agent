@@ -8,6 +8,7 @@
 //   node scripts/consistency-check.js --account "Chase"
 
 import { withBudget, fmtAmount, tablePrint, withSilencedStdout } from './lib/actual.js';
+import { fetchTransactionIds } from './lib/simplefin.js';
 
 const args = process.argv.slice(2);
 const flag = (k) => args.includes(k);
@@ -197,6 +198,28 @@ await withBudget(async (api) => {
   } else {
     bad(`${uncategorized.length} uncategorized transaction(s)`);
 
+    // Load all rules and all transactions (for payee history) once
+    const rules = await api.getRules();
+    const allAccountIds = allAccounts.filter((a) => !a.closed).map((a) => a.id);
+    const historyTxs = [];
+    for (const id of allAccountIds) {
+      const txs = await api.getTransactions(id, '2020-01-01', today);
+      for (const t of txs) if (t.category && t.payee) historyTxs.push(t);
+    }
+
+    // For each payee, find majority category from history
+    const payeeCategoryCount = new Map(); // payee_id → Map<cat_id, count>
+    for (const t of historyTxs) {
+      if (!payeeCategoryCount.has(t.payee)) payeeCategoryCount.set(t.payee, new Map());
+      const m = payeeCategoryCount.get(t.payee);
+      m.set(t.category, (m.get(t.category) ?? 0) + 1);
+    }
+    const bestCategoryForPayee = (payeeId) => {
+      const m = payeeCategoryCount.get(payeeId);
+      if (!m) return null;
+      return [...m.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    };
+
     const byAccount = {};
     for (const t of uncategorized) {
       (byAccount[t.accountName] ??= []).push(t);
@@ -213,6 +236,47 @@ await withBudget(async (api) => {
         { header: 'Notes', value: (r) => (r.notes || '').slice(0, 35) },
       ]);
       if (txs.length > 15) console.log(`    … and ${txs.length - 15} more`);
+
+      // ── Rule proposals ──────────────────────────────────────────────────
+      console.log(`\n  Rule proposals:`);
+      const proposed = new Set(); // deduplicate proposals for same payee
+      for (const t of shown) {
+        const payeeId = t.payee;
+        const payeeName = payeeId ? (payeeById.get(payeeId)?.name ?? '') : '';
+        const importedPayee = t.imported_payee || t.notes || '';
+        const key = payeeId ?? importedPayee;
+        if (proposed.has(key)) continue;
+        proposed.add(key);
+
+        const suggestedCatId = bestCategoryForPayee(payeeId);
+        const suggestedCat = suggestedCatId ? catById.get(suggestedCatId)?.name : null;
+
+        // Check if an existing rule already targets this payee
+        const existingRule = rules.find((r) =>
+          r.conditions.some((c) =>
+            c.field === 'payee' && c.value === payeeId ||
+            c.field === 'imported_payee' && importedPayee &&
+              importedPayee.toLowerCase().includes((c.value ?? '').toLowerCase())
+          )
+        );
+
+        if (existingRule) {
+          const catAction = existingRule.actions.find((a) => a.field === 'category');
+          const ruleCat = catAction ? catById.get(catAction.value)?.name : null;
+          if (ruleCat) {
+            console.log(`    ${payeeName || importedPayee}: rule exists (sets category → ${ruleCat}) but didn't fire — check rule conditions`);
+          } else {
+            console.log(`    ${payeeName || importedPayee}: rule exists but has no category action — consider adding one`);
+          }
+        } else if (suggestedCat) {
+          const matchText = importedPayee
+            ? `imported_payee contains "${importedPayee.slice(0, 30)}"`
+            : `payee = "${payeeName}"`;
+          console.log(`    ${payeeName || importedPayee}: → create rule [${matchText}] set category = "${suggestedCat}"`);
+        } else {
+          console.log(`    ${payeeName || importedPayee}: no history — assign a category manually first`);
+        }
+      }
     }
   }
 
@@ -299,6 +363,42 @@ await withBudget(async (api) => {
 
   if (!splitIssues) {
     ok(`${splitParents.length} split transaction(s) — all balanced`);
+  }
+
+  // ── 6. ORPHANED UNCLEARED TRANSACTIONS ──────────────────────────────────
+  section(6, `ORPHANED UNCLEARED TRANSACTIONS (not in SimpleFIN since ${sinceDate})`);
+
+  const unclearedWithId = allTxs.filter(
+    (t) => !t.cleared && !t.is_parent && !t.transfer_id && t.imported_id && t.date >= sinceDate,
+  );
+
+  if (!unclearedWithId.length) {
+    ok('No uncleared imported transactions to check');
+  } else {
+    let sfinIds;
+    try {
+      sfinIds = await fetchTransactionIds(sinceDate);
+    } catch (err) {
+      warn(`Could not reach SimpleFIN to check orphaned transactions: ${err.message}`);
+      sfinIds = null;
+    }
+
+    if (sfinIds) {
+      const orphaned = unclearedWithId.filter((t) => !sfinIds.has(t.imported_id));
+      if (!orphaned.length) {
+        ok(`All ${unclearedWithId.length} uncleared transaction(s) still present in SimpleFIN`);
+      } else {
+        bad(`${orphaned.length} uncleared transaction(s) no longer returned by SimpleFIN — may be cancelled/reversed:`);
+        tablePrint(orphaned, [
+          { header: 'Date', value: (r) => r.date },
+          { header: 'Account', value: (r) => r.accountName },
+          { header: 'Payee', value: (r) => (r.payee ? payeeById.get(r.payee)?.name || '—' : (r.notes || '—')) },
+          { header: 'Amount', align: 'right', value: (r) => fmtAmount(r.amount) },
+          { header: 'imported_id', value: (r) => r.imported_id },
+        ]);
+        console.log(`     ↳ Consider deleting these or confirming with your bank statement.`);
+      }
+    }
   }
 
   // ── SUMMARY ──────────────────────────────────────────────────────────────
