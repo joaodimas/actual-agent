@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { config as dotenvLocal } from 'dotenv';
 import api from '@actual-app/api';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -6,6 +7,9 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
+
+// .env.local overrides .env (gitignored, for per-environment secrets)
+dotenvLocal({ path: path.join(PROJECT_ROOT, '.env.local'), override: true });
 
 export const DATA_DIR =
   process.env.ACTUAL_DATA_DIR || path.join(PROJECT_ROOT, '.actual-data');

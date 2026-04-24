@@ -10,6 +10,10 @@
 //   SIMPLEFIN_ACCESS_URL=https://TOKEN@bridge.simplefin.org/simplefin
 
 import 'dotenv/config';
+import { config as dotenvLocal } from 'dotenv';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+dotenvLocal({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '.env.local'), override: true });
 
 const args      = process.argv.slice(2);
 const getArg = (flag) => { const i = args.indexOf(flag); return i !== -1 ? args[i + 1] || null : null; };
