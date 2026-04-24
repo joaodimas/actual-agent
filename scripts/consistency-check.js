@@ -101,11 +101,12 @@ await withBudget(async (api) => {
       const digits = (acct.name.match(/\b(\d{4})\b/g) || []);
       if (!digits.length) continue;
       const sf = sfAccounts.find(s => !claimedSfIds.has(s.id) &&
-        digits.some(d => (s.name || '').toLowerCase().includes(d)));
+        digits.some(d => (s.name || '').toLowerCase().includes(d) ||
+                         (s.org?.name || '').toLowerCase().includes(d)));
       if (sf) { sfMatchMap.set(acct.id, sf); claimedSfIds.add(sf.id); }
     }
 
-    // Pass 2: keyword fallback for digit-less accounts
+    // Pass 2: keyword fallback for digit-less accounts — search name AND org
     for (const acct of openAccts) {
       if (sfMatchMap.has(acct.id)) continue;
       const digits = (acct.name.match(/\b(\d{4})\b/g) || []);
@@ -114,7 +115,8 @@ await withBudget(async (api) => {
         .filter(w => w.length >= 4 && !noise.has(w))
         .sort((a, b) => b.length - a.length);
       for (const kw of kws) {
-        const hits = sfAccounts.filter(s => !claimedSfIds.has(s.id) && (s.name || '').toLowerCase().includes(kw));
+        const sfText = s => `${s.name || ''} ${s.org?.name || ''}`.toLowerCase();
+        const hits = sfAccounts.filter(s => !claimedSfIds.has(s.id) && sfText(s).includes(kw));
         if (hits.length === 1) { sfMatchMap.set(acct.id, hits[0]); claimedSfIds.add(hits[0].id); break; }
       }
     }
