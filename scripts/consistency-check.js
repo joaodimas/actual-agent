@@ -29,7 +29,7 @@ async function fetchSimpleFin() {
   p.username = ''; p.password = '';
   const base = p.toString().replace(/\/?$/, '/');
 
-  const startTs = Math.floor(Date.now() / 1000) - 90 * 86400;
+  const startTs = Math.floor(Date.now() / 1000) - 45 * 86400;
   const endTs   = Math.floor(Date.now() / 1000);
   const url     = `${base}accounts?start-date=${startTs}&end-date=${endTs}`;
 
